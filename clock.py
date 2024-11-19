@@ -8,7 +8,7 @@ from playsound import playsound
 
 DISTANCEMATRIX_API_KEY = 'XBJdEDmtBIwogdfsYrJb0baiOzF6qSKA0m4v98TJDaZyc1Jo6If2gL7yKYTDWMYJ'
 WEATHER_API_KEY = '4dcfdb40bf998f293937f62769af9926'
-ALARM_SOUND_PATH = 'alarm.mp3'
+ALARM_SOUND_PATH = '/Users/dk/Desktop/clock project/audio/audio.wav'
 
 def get_travel_time(start, destination):
     # Updated to use DistanceMatrix.ai API
@@ -39,9 +39,12 @@ def adjust_for_weather_conditions(weather, travel_time):
 def calculate_leave_time(arrival_time, travel_time):
     return arrival_time - timedelta(seconds=travel_time)
     
-def check_for_delays_and_weather(start, destination):
-    travel_time = get_travel_time(start, destination)
+def check_for_weather(start):
     weather = get_weather_conditions(start)
+    return weather
+
+def check_for_delays_and_weather(start, destination, weather):
+    travel_time = get_travel_time(start, destination)
     adjusted_travel_time = adjust_for_weather_conditions(weather, travel_time)
     return adjusted_travel_time
     
@@ -54,12 +57,22 @@ class AlarmClockApp:
         tk.Label(root, text="Start Address").grid(row=0, column=0)
         self.start_entry = tk.Entry(root)
         self.start_entry.grid(row=0, column=1)
+
+        #text box for start city
+        tk.Label(root, text="City").grid(row=0, column=2)
+        self.start_city_entry = tk.Entry(root)
+        self.start_city_entry.grid(row=0, column=3)
     
         #text box for destination address
-        tk.Label(root, text="Destination Address").grid(row=0, column=0)
+        tk.Label(root, text="Destination Address").grid(row=1, column=0)
         self.destination_entry = tk.Entry(root)
         self.destination_entry.grid(row=1, column=1)
         
+        #text box for destination city
+        tk.Label(root, text="City").grid(row=1, column=2)
+        self.destination_city_entry = tk.Entry(root)
+        self.destination_city_entry.grid(row=1, column=3)
+
         #text box for arrival time entry
         tk.Label(root, text="Arrival Time (HH:MM)").grid(row=2, column=0)
         self.arrival_entry = tk.Entry(root)
@@ -89,22 +102,24 @@ class AlarmClockApp:
         except ValueError:
             messagebox.showerror("Input Error", "Please enter arrival time in HH:MM format.")
     
-    def start_alarm_thread(self, start, destination, leave_time):
-        def alarm_loop():
+    def start_alarm_thread(self, start, destination, initial_leave_time):
+        start = self.start_city_entry.get()
+        def alarm_loop(leave_time):
+            weather = check_for_weather(start)
             while True:
-                travel_time = check_for_delays_and_weather(start, destination)
-                updated_leave_time = calculate_leave_time(datetime.now() + timedelta(seconds=travel_time), travel_time)
-                if updated_leave_time != leave_time:
-                    self.alarm_label.config(text=f"Updated Leave Time: {updated_leave_time.strftime('%H:%M')}")
-                    leave_time = updated_leave_time
-                current_time = datetime.now().strftime("%H:%M")
-                if current_time == leave_time.strftime("%H:%M"):
+                travel_time = check_for_delays_and_weather(start, destination, weather)
+                potential_new_leave_time = calculate_leave_time(datetime.now() + timedelta(seconds=travel_time), travel_time)
+                if abs((potential_new_leave_time - leave_time).total_seconds()) > 300:
+                    leave_time = potential_new_leave_time
+                    self.alarm_label.config(text=f"Updated Leave Time: {leave_time.strftime('%H:%M')}")
+                current_time = datetime.now()
+                if current_time >= leave_time:
                     messagebox.showinfo("Alarm", "Time to leave!")
                     playsound(ALARM_SOUND_PATH)
                     break
                 time.sleep(60)
         
-        threading.Thread(target=alarm_loop, daemon=True).start()
+        threading.Thread(target=alarm_loop, args=(initial_leave_time,), daemon=True).start()
     
 root = tk.Tk()
 app = AlarmClockApp(root)
