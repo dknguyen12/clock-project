@@ -139,9 +139,10 @@ def hangman_puzzle():
 
 
 # Play Alarm Function
-def play_alarm():
-    threading.Thread(target=playsound, args=(ALARM_SOUND_PATH,), daemon=True).start()
-    hangman_puzzle()
+def play_alarm(app):
+    # Play the alarm sound and schedule the Hangman puzzle on the main thread
+    threading.Thread(target=lambda: playsound(ALARM_SOUND_PATH), daemon=True).start()
+    app.root.after(0, hangman_puzzle)
 
 
 # Alarm Clock App
@@ -150,16 +151,29 @@ class AlarmClockApp:
         self.root = root
         self.root.title("Smart Alarm Clock")
 
-        # Entry fields
+        # Entry fields for start address and city
         Label(root, text="Start Address").grid(row=0, column=0)
         self.start_entry = Entry(root)
         self.start_entry.grid(row=0, column=1)
+
+        Label(root, text="Start City").grid(row=0, column=2)
+        self.start_city_entry = Entry(root)
+        self.start_city_entry.grid(row=0, column=3)
+
+        # Entry fields for destination address and city
         Label(root, text="Destination Address").grid(row=1, column=0)
         self.destination_entry = Entry(root)
         self.destination_entry.grid(row=1, column=1)
+
+        Label(root, text="Destination City").grid(row=1, column=2)
+        self.destination_city_entry = Entry(root)
+        self.destination_city_entry.grid(row=1, column=3)
+
+        # Arrival time entry
         Label(root, text="Arrival Time (HH:MM)").grid(row=2, column=0)
         self.arrival_entry = Entry(root)
         self.arrival_entry.grid(row=2, column=1)
+
         self.enter_button = Button(root, text="Enter", command=self.calculate_time)
         self.enter_button.grid(row=3, column=1)
 
@@ -169,102 +183,120 @@ class AlarmClockApp:
         # Frame for displaying active alarms
         Label(root, text="Active Alarms:").grid(row=5, column=0, sticky="w")
         self.alarm_frame = Frame(root)
-        self.alarm_frame.grid(row=6, column=0, columnspan=2, sticky="ew")
+        self.alarm_frame.grid(row=6, column=0, columnspan=4, sticky="ew")
 
         self.active_alarms = {}  # Dictionary to store alarms
 
     def calculate_time(self):
-        start = self.start_entry.get()
-        destination = self.destination_entry.get()
+        # Get inputs from the GUI
+        start_address = self.start_entry.get()
+        start_city = self.start_city_entry.get()
+        start = f"{start_address}, {start_city}"
+
+        destination_address = self.destination_entry.get()
+        destination_city = self.destination_city_entry.get()
+        destination = f"{destination_address}, {destination_city}"
+
         arrival_time_str = self.arrival_entry.get()
 
         try:
+            # Parse the arrival time
             arrival_time = datetime.strptime(arrival_time_str, "%H:%M").replace(
                 year=datetime.now().year, month=datetime.now().month, day=datetime.now().day
             )
-            leave_time = arrival_time - timedelta(minutes=30)  # Simulate travel time calculation
-            self.alarm_label.config(text=f"Recommended Leave Time: {leave_time.strftime('%H:%M')}")
-            if messagebox.askyesno("Set Alarm", "Would you like to set an alarm?"):
-                self.add_alarm(leave_time, arrival_time, start, destination)
+
+            # Fetch travel time
+            travel_time = get_travel_time(start, destination)
+
+            # Fetch and apply weather conditions (using start city)
+            weather = get_weather_conditions(start_city) if start_city else None
+            if travel_time:
+                if weather:
+                    travel_time = adjust_for_weather_conditions(weather, travel_time)
+                leave_time = calculate_leave_time(arrival_time, travel_time)
+
+                # Display calculated leave time
+                self.alarm_label.config(text=f"Recommended Leave Time: {leave_time.strftime('%H:%M')}")
+
+                # Confirm alarm setup
+                if messagebox.askyesno("Set Alarm", "Would you like to set an alarm?"):
+                    self.add_alarm(leave_time, arrival_time, start, destination)
         except ValueError:
             messagebox.showerror("Input Error", "Please enter arrival time in HH:MM format.")
 
     def add_alarm(self, leave_time, arrival_time, start, destination):
-        alarm_id = str(leave_time)  # Use leave_time as the alarm ID
-        if alarm_id not in self.active_alarms:
-            # Create an event to signal the thread to stop
-            stop_event = threading.Event()
+        # Generate a unique ID for the alarm using leave_time and a random value
+        alarm_id = f"{leave_time}_{random.randint(1000, 9999)}"
 
-            # Create a thread for the alarm
-            alarm_thread = threading.Thread(
-                target=self.start_alarm_thread, args=(leave_time, alarm_id, stop_event), daemon=True
-            )
-            alarm_thread.start()
+        # Create an event to signal the thread to stop
+        stop_event = threading.Event()
 
-            # Add alarm details to the dictionary
-            self.active_alarms[alarm_id] = {
-                "leave_time": leave_time,
-                "arrival_time": arrival_time,
-                "start": start,
-                "destination": destination,
-                "thread": alarm_thread,
-                "stop_event": stop_event,
-            }
+        # Create a thread for the alarm
+        alarm_thread = threading.Thread(
+            target=self.start_alarm_thread, args=(leave_time, alarm_id, stop_event), daemon=True
+        )
+        alarm_thread.start()
 
-            # Update the alarm list in the GUI
-            self.update_alarm_list()
+        # Add alarm details to the dictionary
+        self.active_alarms[alarm_id] = {
+            "leave_time": leave_time,
+            "arrival_time": arrival_time,
+            "start": start,
+            "destination": destination,
+            "thread": alarm_thread,
+            "stop_event": stop_event,
+        }
+
+        # Update the alarm list in the GUI
+        self.update_alarm_list()
 
     def start_alarm_thread(self, leave_time, alarm_id, stop_event):
         while not stop_event.is_set():
             current_time = datetime.now()
             if current_time >= leave_time:
-                play_alarm()
-                del self.active_alarms[alarm_id]  # Remove alarm after it triggers
-                self.update_alarm_list()
+                self.trigger_alarm(alarm_id)
                 break
             time.sleep(1)
 
+    def trigger_alarm(self, alarm_id):
+        if alarm_id in self.active_alarms:
+            del self.active_alarms[alarm_id]
+            self.update_alarm_list()
+
+        self.root.after(0, lambda: play_alarm(self))
+
     def update_alarm_list(self):
-        # Clear the frame
         for widget in self.alarm_frame.winfo_children():
             widget.destroy()
 
-        # Add alarms to the frame
         for alarm_id, alarm_data in self.active_alarms.items():
             leave_time = alarm_data["leave_time"]
             arrival_time = alarm_data["arrival_time"]
             start = alarm_data["start"]
             destination = alarm_data["destination"]
 
-            # Display alarm details
             alarm_label = Label(
                 self.alarm_frame,
                 text=f"Alarm: {leave_time.strftime('%H:%M')} | Arrival: {arrival_time.strftime('%H:%M')} | From: {start} | To: {destination}",
+                anchor="w",
             )
-            alarm_label.pack(side="top", anchor="w", padx=5, pady=2)
+            alarm_label.pack(fill="x", padx=5, pady=2)
 
-            # Add delete button
             delete_button = Button(
                 self.alarm_frame,
                 text="Delete",
                 command=lambda alarm_id=alarm_id: self.delete_alarm(alarm_id),
             )
-            delete_button.pack(side="top", anchor="e", padx=5, pady=2)
+            delete_button.pack(fill="x", padx=5, pady=2)
 
     def delete_alarm(self, alarm_id):
-        # Stop the alarm thread by setting its stop_event
         if alarm_id in self.active_alarms:
-            self.active_alarms[alarm_id]["stop_event"].set()  # Signal the thread to stop
+            self.active_alarms[alarm_id]["stop_event"].set()
             del self.active_alarms[alarm_id]
             self.update_alarm_list()
-
-
-def play_alarm():
-    threading.Thread(target=playsound, args=(ALARM_SOUND_PATH,), daemon=True).start()
 
 
 # Main Application
 root = Tk()
 app = AlarmClockApp(root)
 root.mainloop()
-
