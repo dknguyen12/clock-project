@@ -124,4 +124,3 @@ class AlarmClockApp:
 root = tk.Tk()
 app = AlarmClockApp(root)
 root.mainloop()
-dwadwd
