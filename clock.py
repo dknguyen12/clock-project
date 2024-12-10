@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import Tk, Label, Entry, Button, Frame, messagebox
 import requests
 from datetime import datetime, timedelta
 import threading
@@ -55,12 +55,47 @@ def check_for_delays_and_weather(start, destination, weather):
 
 # Hangman Puzzle
 def hangman_puzzle():
+    def initialize_new_game():
+        """Initializes a new Hangman game with a new word."""
+        nonlocal chosen_word, guessed_word, attempts, used_letters
+        chosen_word = random.choice(word_list)
+        guessed_word = ["_"] * len(chosen_word)
+        attempts = 6
+        used_letters.clear()
+
+        # Update UI
+        status_label.config(text=" ".join(guessed_word))
+        attempts_label.config(text=f"Attempts Left: {attempts}")
+        used_letters_label.config(text="Used Letters: ")
+
     word_list = ["python", "travel", "weather", "smart", "alarm"]
-    chosen_word = random.choice(word_list)
-    guessed_word = ["_"] * len(chosen_word)
+    chosen_word = ""
+    guessed_word = []
     attempts = 6
     used_letters = set()
 
+    # Initialize the Hangman window
+    hangman_window = tk.Toplevel()
+    hangman_window.title("Hangman Puzzle")
+    tk.Label(hangman_window, text="Solve the Hangman to turn off the alarm!", font=("Helvetica", 14)).pack(pady=10)
+
+    # Define UI elements (placed before usage)
+    status_label = tk.Label(hangman_window, text="", font=("Helvetica", 16))
+    status_label.pack(pady=10)
+
+    guess_entry = tk.Entry(hangman_window, font=("Helvetica", 14))
+    guess_entry.pack(pady=10)
+
+    submit_button = tk.Button(hangman_window, text="Submit", font=("Helvetica", 12))
+    submit_button.pack(pady=10)
+
+    attempts_label = tk.Label(hangman_window, text="", font=("Helvetica", 12))
+    attempts_label.pack(pady=10)
+
+    used_letters_label = tk.Label(hangman_window, text="", font=("Helvetica", 12))
+    used_letters_label.pack(pady=10)
+
+    # Bind submit button to check_guess function
     def check_guess():
         nonlocal attempts
         guess = guess_entry.get()
@@ -92,27 +127,15 @@ def hangman_puzzle():
             messagebox.showinfo("Success", "You've solved the Hangman puzzle! Alarm stopped.")
             hangman_window.destroy()
         elif attempts == 0:
-            messagebox.showerror("Failure", "Out of attempts! Try again.")
-            attempts_label.config(text=f"Attempts Left: {attempts}")
+            messagebox.showerror("Failure", "Out of attempts! Starting a new puzzle.")
+            initialize_new_game()
 
-    hangman_window = tk.Toplevel()
-    hangman_window.title("Hangman Puzzle")
-    tk.Label(hangman_window, text="Solve the Hangman to turn off the alarm!", font=("Helvetica", 14)).pack(pady=10)
+    # Set the button command after defining check_guess
+    submit_button.config(command=check_guess)
 
-    status_label = tk.Label(hangman_window, text=" ".join(guessed_word), font=("Helvetica", 16))
-    status_label.pack(pady=10)
+    # Initialize the UI for the first game
+    initialize_new_game()
 
-    guess_entry = tk.Entry(hangman_window, font=("Helvetica", 14))
-    guess_entry.pack(pady=10)
-
-    submit_button = tk.Button(hangman_window, text="Submit", command=check_guess, font=("Helvetica", 12))
-    submit_button.pack(pady=10)
-
-    attempts_label = tk.Label(hangman_window, text=f"Attempts Left: {attempts}", font=("Helvetica", 12))
-    attempts_label.pack(pady=10)
-
-    used_letters_label = tk.Label(hangman_window, text="Used Letters: ", font=("Helvetica", 12))
-    used_letters_label.pack(pady=10)
 
 
 # Play Alarm Function
@@ -128,19 +151,27 @@ class AlarmClockApp:
         self.root.title("Smart Alarm Clock")
 
         # Entry fields
-        tk.Label(root, text="Start Address").grid(row=0, column=0)
-        self.start_entry = tk.Entry(root)
+        Label(root, text="Start Address").grid(row=0, column=0)
+        self.start_entry = Entry(root)
         self.start_entry.grid(row=0, column=1)
-        tk.Label(root, text="Destination Address").grid(row=1, column=0)
-        self.destination_entry = tk.Entry(root)
+        Label(root, text="Destination Address").grid(row=1, column=0)
+        self.destination_entry = Entry(root)
         self.destination_entry.grid(row=1, column=1)
-        tk.Label(root, text="Arrival Time (HH:MM)").grid(row=2, column=0)
-        self.arrival_entry = tk.Entry(root)
+        Label(root, text="Arrival Time (HH:MM)").grid(row=2, column=0)
+        self.arrival_entry = Entry(root)
         self.arrival_entry.grid(row=2, column=1)
-        self.enter_button = tk.Button(root, text="Enter", command=self.calculate_time)
+        self.enter_button = Button(root, text="Enter", command=self.calculate_time)
         self.enter_button.grid(row=3, column=1)
-        self.alarm_label = tk.Label(root, text="", fg="red")
+
+        self.alarm_label = Label(root, text="", fg="red")
         self.alarm_label.grid(row=4, columnspan=2)
+
+        # Frame for displaying active alarms
+        Label(root, text="Active Alarms:").grid(row=5, column=0, sticky="w")
+        self.alarm_frame = Frame(root)
+        self.alarm_frame.grid(row=6, column=0, columnspan=2, sticky="ew")
+
+        self.active_alarms = {}  # Dictionary to store alarms
 
     def calculate_time(self):
         start = self.start_entry.get()
@@ -151,28 +182,89 @@ class AlarmClockApp:
             arrival_time = datetime.strptime(arrival_time_str, "%H:%M").replace(
                 year=datetime.now().year, month=datetime.now().month, day=datetime.now().day
             )
-            travel_time = get_travel_time(start, destination)
-            if travel_time:
-                leave_time = calculate_leave_time(arrival_time, travel_time)
-                self.alarm_label.config(text=f"Recommended Leave Time: {leave_time.strftime('%H:%M')}")
-                if messagebox.askyesno("Set Alarm", "Would you like to set an alarm?"):
-                    self.start_alarm_thread(leave_time)
+            leave_time = arrival_time - timedelta(minutes=30)  # Simulate travel time calculation
+            self.alarm_label.config(text=f"Recommended Leave Time: {leave_time.strftime('%H:%M')}")
+            if messagebox.askyesno("Set Alarm", "Would you like to set an alarm?"):
+                self.add_alarm(leave_time, arrival_time, start, destination)
         except ValueError:
             messagebox.showerror("Input Error", "Please enter arrival time in HH:MM format.")
 
-    def start_alarm_thread(self, leave_time):
-        def alarm_loop():
-            while True:
-                current_time = datetime.now()
-                if current_time >= leave_time:
-                    play_alarm()
-                    break
-                time.sleep(1)
+    def add_alarm(self, leave_time, arrival_time, start, destination):
+        alarm_id = str(leave_time)  # Use leave_time as the alarm ID
+        if alarm_id not in self.active_alarms:
+            # Create an event to signal the thread to stop
+            stop_event = threading.Event()
 
-        threading.Thread(target=alarm_loop, daemon=True).start()
+            # Create a thread for the alarm
+            alarm_thread = threading.Thread(
+                target=self.start_alarm_thread, args=(leave_time, alarm_id, stop_event), daemon=True
+            )
+            alarm_thread.start()
+
+            # Add alarm details to the dictionary
+            self.active_alarms[alarm_id] = {
+                "leave_time": leave_time,
+                "arrival_time": arrival_time,
+                "start": start,
+                "destination": destination,
+                "thread": alarm_thread,
+                "stop_event": stop_event,
+            }
+
+            # Update the alarm list in the GUI
+            self.update_alarm_list()
+
+    def start_alarm_thread(self, leave_time, alarm_id, stop_event):
+        while not stop_event.is_set():
+            current_time = datetime.now()
+            if current_time >= leave_time:
+                play_alarm()
+                del self.active_alarms[alarm_id]  # Remove alarm after it triggers
+                self.update_alarm_list()
+                break
+            time.sleep(1)
+
+    def update_alarm_list(self):
+        # Clear the frame
+        for widget in self.alarm_frame.winfo_children():
+            widget.destroy()
+
+        # Add alarms to the frame
+        for alarm_id, alarm_data in self.active_alarms.items():
+            leave_time = alarm_data["leave_time"]
+            arrival_time = alarm_data["arrival_time"]
+            start = alarm_data["start"]
+            destination = alarm_data["destination"]
+
+            # Display alarm details
+            alarm_label = Label(
+                self.alarm_frame,
+                text=f"Alarm: {leave_time.strftime('%H:%M')} | Arrival: {arrival_time.strftime('%H:%M')} | From: {start} | To: {destination}",
+            )
+            alarm_label.pack(side="top", anchor="w", padx=5, pady=2)
+
+            # Add delete button
+            delete_button = Button(
+                self.alarm_frame,
+                text="Delete",
+                command=lambda alarm_id=alarm_id: self.delete_alarm(alarm_id),
+            )
+            delete_button.pack(side="top", anchor="e", padx=5, pady=2)
+
+    def delete_alarm(self, alarm_id):
+        # Stop the alarm thread by setting its stop_event
+        if alarm_id in self.active_alarms:
+            self.active_alarms[alarm_id]["stop_event"].set()  # Signal the thread to stop
+            del self.active_alarms[alarm_id]
+            self.update_alarm_list()
+
+
+def play_alarm():
+    threading.Thread(target=playsound, args=(ALARM_SOUND_PATH,), daemon=True).start()
 
 
 # Main Application
-root = tk.Tk()
+root = Tk()
 app = AlarmClockApp(root)
 root.mainloop()
+
