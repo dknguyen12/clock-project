@@ -73,15 +73,23 @@ def hangman_puzzle():
         attempts_label.config(text=f"Attempts Left: {attempts}")
         used_letters_label.config(text="Used Letters: ")
 
-    word_list = ["python", "travel", "weather", "smart", "alarm"]
+    word_list = ["python"]
     chosen_word = ""
     guessed_word = []
     attempts = 6
     used_letters = set()
 
     # Initialize the Hangman window
+    # Initialize the Hangman window
     hangman_window = tk.Toplevel()
     hangman_window.title("Hangman Puzzle")
+
+    # Disable close button
+    hangman_window.protocol("WM_DELETE_WINDOW", lambda: None)
+
+    # Ensure the window stays on top and focused
+    hangman_window.attributes("-topmost", True)
+    hangman_window.focus_force()
     tk.Label(hangman_window, text="Solve the Hangman to turn off the alarm!", font=("Helvetica", 14)).pack(pady=10)
 
     # Define UI elements (placed before usage)
@@ -284,10 +292,16 @@ class AlarmClockApp:
             time.sleep(1)
 
     def trigger_alarm(self, alarm_id):
+        # Check if the alarm exists in the active alarms dictionary
         if alarm_id in self.active_alarms:
+            # Stop the alarm thread and remove the alarm from the dictionary
+            self.active_alarms[alarm_id]["stop_event"].set()
             del self.active_alarms[alarm_id]
+
+            # Update the alarm list in the GUI
             self.update_alarm_list()
 
+        # Play the alarm sound and display the Hangman puzzle
         self.root.after(0, lambda: play_alarm(self))
 
     def update_alarm_list(self):
