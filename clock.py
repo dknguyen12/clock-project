@@ -1,15 +1,16 @@
 import tkinter as tk
-from tkinter import Tk, Label, Entry, Button, Frame, messagebox
+from tkinter import Tk, Label, Entry, Button, Frame, messagebox, ttk
 import requests
 from datetime import datetime, timedelta
 import threading
 import time
 from playsound import playsound
 import random
+import pygame
 
 DISTANCEMATRIX_API_KEY = 'XBJdEDmtBIwogdfsYrJb0baiOzF6qSKA0m4v98TJDaZyc1Jo6If2gL7yKYTDWMYJ'
 WEATHER_API_KEY = '4dcfdb40bf998f293937f62769af9926'
-ALARM_SOUND_PATH = '/Users/dk/Desktop/clock_project/audio/audio.wav'
+ALARM_SOUND_PATH = '/Users/dk/Desktop/clock proejct/audio/audio.wav'
 
 # Utility Functions
 def get_travel_time(start, destination):
@@ -24,6 +25,10 @@ def get_travel_time(start, destination):
 
 
 def calculate_leave_time(arrival_time, travel_time):
+    # If travel_time is already a timedelta, subtract directly
+    if isinstance(travel_time, timedelta):
+        return arrival_time - travel_time
+    # Otherwise, assume travel_time is in seconds and convert it
     return arrival_time - timedelta(seconds=travel_time)
 
 
@@ -151,41 +156,55 @@ class AlarmClockApp:
         self.root = root
         self.root.title("Smart Alarm Clock")
 
-        # Entry fields for start address and city
-        Label(root, text="Start Address").grid(row=0, column=0)
-        self.start_entry = Entry(root)
-        self.start_entry.grid(row=0, column=1)
+        # Real-time clock label
+        self.clock_label = Label(root, font=("Helvetica", 14), fg="green")
+        self.clock_label.grid(row=0, column=0, columnspan=4, pady=10)
+        self.update_clock()
 
-        Label(root, text="Start City").grid(row=0, column=2)
+        # Entry fields for start address and city
+        Label(root, text="Start Address").grid(row=1, column=0)
+        self.start_entry = Entry(root)
+        self.start_entry.grid(row=1, column=1)
+
+        Label(root, text="Start City").grid(row=1, column=2)
         self.start_city_entry = Entry(root)
-        self.start_city_entry.grid(row=0, column=3)
+        self.start_city_entry.grid(row=1, column=3)
 
         # Entry fields for destination address and city
-        Label(root, text="Destination Address").grid(row=1, column=0)
+        Label(root, text="Destination Address").grid(row=2, column=0)
         self.destination_entry = Entry(root)
-        self.destination_entry.grid(row=1, column=1)
+        self.destination_entry.grid(row=2, column=1)
 
-        Label(root, text="Destination City").grid(row=1, column=2)
+        Label(root, text="Destination City").grid(row=2, column=2)
         self.destination_city_entry = Entry(root)
-        self.destination_city_entry.grid(row=1, column=3)
+        self.destination_city_entry.grid(row=2, column=3)
 
         # Arrival time entry
-        Label(root, text="Arrival Time (HH:MM)").grid(row=2, column=0)
+        Label(root, text="Arrival Time (HH:MM)").grid(row=3, column=0)
         self.arrival_entry = Entry(root)
-        self.arrival_entry.grid(row=2, column=1)
+        self.arrival_entry.grid(row=3, column=1)
 
         self.enter_button = Button(root, text="Enter", command=self.calculate_time)
-        self.enter_button.grid(row=3, column=1)
+        self.enter_button.grid(row=4, column=1)
 
         self.alarm_label = Label(root, text="", fg="red")
-        self.alarm_label.grid(row=4, columnspan=2)
+        self.alarm_label.grid(row=5, columnspan=2)
 
         # Frame for displaying active alarms
-        Label(root, text="Active Alarms:").grid(row=5, column=0, sticky="w")
+        Label(root, text="Active Alarms:").grid(row=6, column=0, sticky="w")
         self.alarm_frame = Frame(root)
-        self.alarm_frame.grid(row=6, column=0, columnspan=4, sticky="ew")
+        self.alarm_frame.grid(row=7, column=0, columnspan=4, sticky="ew")
+
+        self.task_button = tk.Button(root, text="Add Task", command=self.open_task_window)
+        self.task_button.grid(row=8, column=0, pady=10)
 
         self.active_alarms = {}  # Dictionary to store alarms
+
+    def update_clock(self):
+        # Update the clock label with the current time
+        current_time = datetime.now().strftime("%H:%M:%S")
+        self.clock_label.config(text=f"Current Time: {current_time}")
+        self.root.after(1000, self.update_clock)
 
     def calculate_time(self):
         # Get inputs from the GUI
@@ -225,6 +244,11 @@ class AlarmClockApp:
             messagebox.showerror("Input Error", "Please enter arrival time in HH:MM format.")
 
     def add_alarm(self, leave_time, arrival_time, start, destination):
+        # Fetch travel time to store in alarm data
+        travel_time = get_travel_time(start, destination)
+        if travel_time is None:
+            return  # Exit if travel time could not be calculated
+        
         # Generate a unique ID for the alarm using leave_time and a random value
         alarm_id = f"{leave_time}_{random.randint(1000, 9999)}"
 
@@ -243,6 +267,7 @@ class AlarmClockApp:
             "arrival_time": arrival_time,
             "start": start,
             "destination": destination,
+            "travel_time": timedelta(seconds=travel_time),  # Store travel time here
             "thread": alarm_thread,
             "stop_event": stop_event,
         }
@@ -295,8 +320,168 @@ class AlarmClockApp:
             del self.active_alarms[alarm_id]
             self.update_alarm_list()
 
+    def adjust_alarm_times(self):
+        """Adjust alarms based on tasks and restart threads."""
+        for alarm_id, alarm_data in self.active_alarms.items():
+            total_task_time = sum(task["duration"] for task in alarm_data.get("tasks", []))
+            adjusted_leave_time = calculate_leave_time(
+                alarm_data["arrival_time"],
+                alarm_data["travel_time"] + timedelta(minutes=total_task_time),
+            )
+            
+            # Update leave time
+            alarm_data["leave_time"] = adjusted_leave_time
+
+            # Stop the current thread
+            if "stop_event" in alarm_data:
+                alarm_data["stop_event"].set()
+
+            # Create a new stop_event
+            stop_event = threading.Event()
+
+            # Restart the thread with the updated leave time
+            alarm_thread = threading.Thread(
+                target=self.start_alarm_thread,
+                args=(adjusted_leave_time, alarm_id, stop_event),
+                daemon=True,
+            )
+            alarm_thread.start()
+
+            # Update the dictionary with the new thread and stop_event
+            alarm_data["thread"] = alarm_thread
+            alarm_data["stop_event"] = stop_event
+
+        self.update_alarm_list()
+
+    def open_task_window(self):
+        """Opens a new window to add tasks."""
+        task_window = tk.Toplevel(self.root)
+        task_window.title("Add Task")
+
+        # Task label entry
+        tk.Label(task_window, text="Task Label").grid(row=0, column=0, padx=5, pady=5)
+        task_label_entry = tk.Entry(task_window)
+        task_label_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Task duration entry
+        tk.Label(task_window, text="Duration (minutes)").grid(row=1, column=0, padx=5, pady=5)
+        task_duration_entry = tk.Entry(task_window)
+        task_duration_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Dropdown menu for alarms
+        tk.Label(task_window, text="Select Alarm").grid(row=2, column=0, padx=5, pady=5)
+        alarm_dropdown = ttk.Combobox(task_window, values=list(self.active_alarms.keys()), state="readonly")
+        alarm_dropdown.grid(row=2, column=1, padx=5, pady=5)
+
+        # Submit button
+        def submit_task():
+            label = task_label_entry.get()
+            try:
+                duration = int(task_duration_entry.get())
+            except ValueError:
+                messagebox.showerror("Input Error", "Please enter a valid duration in minutes.")
+                return
+
+            selected_alarm = alarm_dropdown.get()
+
+            if not label or not selected_alarm:
+                messagebox.showerror("Input Error", "All fields are required.")
+                return
+
+            # Add task to the selected alarm
+            if "tasks" not in self.active_alarms[selected_alarm]:
+                self.active_alarms[selected_alarm]["tasks"] = []
+
+            self.active_alarms[selected_alarm]["tasks"].append({"label": label, "duration": duration})
+            self.adjust_alarm_times()
+            self.update_alarm_list()
+            task_window.destroy()
+
+        tk.Button(task_window, text="Submit", command=submit_task).grid(row=3, column=0, columnspan=2, pady=10)
+
+    def update_alarm_list(self):
+        """Update the alarm list with tasks."""
+        for widget in self.alarm_frame.winfo_children():
+            widget.destroy()
+
+        for alarm_id, alarm_data in self.active_alarms.items():
+            leave_time = alarm_data["leave_time"]
+            arrival_time = alarm_data["arrival_time"]
+            start = alarm_data["start"]
+            destination = alarm_data["destination"]
+
+            alarm_label = tk.Label(
+                self.alarm_frame,
+                text=f"Alarm: {leave_time.strftime('%H:%M')} | Arrival: {arrival_time.strftime('%H:%M')} | From: {start} | To: {destination}",
+                anchor="w",
+            )
+            alarm_label.pack(fill="x", padx=5, pady=2)
+
+            # Display tasks
+            if "tasks" in alarm_data:
+                for task in alarm_data["tasks"]:
+                    task_label = tk.Label(
+                        self.alarm_frame,
+                        text=f"  - Task: {task['label']} ({task['duration']} min)",
+                        anchor="w",
+                    )
+                    task_label.pack(fill="x", padx=20, pady=1)
+
+            delete_button = tk.Button(
+                self.alarm_frame,
+                text="Delete",
+                command=lambda alarm_id=alarm_id: self.delete_alarm(alarm_id),
+            )
+            delete_button.pack(fill="x", padx=5, pady=2)
+
+class WelcomePage:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Welcome to Smart Alarm Clock")
+
+        # Welcome message
+        self.message_label = Label(
+            root,
+            text="Welcome to the Smart Alarm Clock!",
+            font=("Helvetica", 16),
+            fg="blue"
+        )
+        self.message_label.pack(pady=20)
+
+        # Real-time clock label
+        self.clock_label = Label(root, font=("Helvetica", 14))
+        self.clock_label.pack(pady=10)
+
+        # Open App button
+        self.open_app_button = Button(
+            root,
+            text="Open App",
+            font=("Helvetica", 12),
+            command=self.open_alarm_clock_app
+        )
+        self.open_app_button.pack(pady=20)
+
+        # Start the clock update
+        self.update_clock()
+
+    def update_clock(self):
+        # Update the clock label with the current time
+        current_time = datetime.now().strftime("%H:%M:%S")
+        self.clock_label.config(text=f"Current Time: {current_time}")
+        self.root.after(1000, self.update_clock)
+
+    def open_alarm_clock_app(self):
+        # Destroy the welcome page and open the alarm clock app
+        self.root.destroy()
+        self.launch_alarm_clock_app()
+
+    def launch_alarm_clock_app(self):
+        # Create a new root for the Alarm Clock App
+        alarm_root = Tk()
+        app = AlarmClockApp(alarm_root)
+        alarm_root.mainloop()
 
 # Main Application
 root = Tk()
-app = AlarmClockApp(root)
+welcome_page = WelcomePage(root)
 root.mainloop()
