@@ -8,6 +8,14 @@ from playsound import playsound
 import random
 import pygame
 
+PRIMARY_COLOR = "#3498db"  # Blue
+SECONDARY_COLOR = "#2ecc71"  # Green
+BACKGROUND_COLOR = "#ecf0f1"  # Light gray
+TEXT_COLOR = "#2c3e50"  # Dark gray
+TITLE_FONT = ("Helvetica", 18, "bold")
+LABEL_FONT = ("Helvetica", 12)
+BUTTON_FONT = ("Helvetica", 14, "bold")
+
 DISTANCEMATRIX_API_KEY = 'XBJdEDmtBIwogdfsYrJb0baiOzF6qSKA0m4v98TJDaZyc1Jo6If2gL7yKYTDWMYJ'
 WEATHER_API_KEY = '4dcfdb40bf998f293937f62769af9926'
 ALARM_SOUND_PATH = '/Users/dk/Desktop/clock proejct/audio/audio.wav'
@@ -163,53 +171,64 @@ class AlarmClockApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Smart Alarm Clock")
+        self.root.configure(bg=BACKGROUND_COLOR)
 
-        # Real-time clock label
-        self.clock_label = Label(root, font=("Helvetica", 14), fg="green")
-        self.clock_label.grid(row=0, column=0, columnspan=4, pady=10)
+        # Configure style
+        style = ttk.Style()
+        style.configure("TButton", font=BUTTON_FONT, padding=6)
+        style.configure("TLabel", font=LABEL_FONT, background=BACKGROUND_COLOR, foreground=TEXT_COLOR)
+
+        # Real-time clock
+        self.clock_label = ttk.Label(root, font=TITLE_FONT)
+        self.clock_label.grid(row=0, column=0, columnspan=4, pady=10, sticky="ew")
         self.update_clock()
 
-        # Entry fields for start address and city
-        Label(root, text="Start Address").grid(row=1, column=0)
-        self.start_entry = Entry(root)
-        self.start_entry.grid(row=1, column=1)
+        # Input frame
+        input_frame = Frame(root, bg=BACKGROUND_COLOR)
+        input_frame.grid(row=1, column=0, columnspan=4, padx=10, pady=10)
 
-        Label(root, text="Start City").grid(row=1, column=2)
-        self.start_city_entry = Entry(root)
-        self.start_city_entry.grid(row=1, column=3)
+        # Start address and city
+        ttk.Label(input_frame, text="Start Address:").grid(row=0, column=0, padx=5, pady=5)
+        self.start_entry = ttk.Entry(input_frame)
+        self.start_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        # Entry fields for destination address and city
-        Label(root, text="Destination Address").grid(row=2, column=0)
-        self.destination_entry = Entry(root)
-        self.destination_entry.grid(row=2, column=1)
+        ttk.Label(input_frame, text="Start City:").grid(row=0, column=2, padx=5, pady=5)
+        self.start_city_entry = ttk.Entry(input_frame)
+        self.start_city_entry.grid(row=0, column=3, padx=5, pady=5)
 
-        Label(root, text="Destination City").grid(row=2, column=2)
-        self.destination_city_entry = Entry(root)
-        self.destination_city_entry.grid(row=2, column=3)
+        # Destination address and city
+        ttk.Label(input_frame, text="Destination Address:").grid(row=1, column=0, padx=5, pady=5)
+        self.destination_entry = ttk.Entry(input_frame)
+        self.destination_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        # Arrival time entry
-        Label(root, text="Arrival Time (HH:MM)").grid(row=3, column=0)
-        self.arrival_entry = Entry(root)
-        self.arrival_entry.grid(row=3, column=1)
+        ttk.Label(input_frame, text="Destination City:").grid(row=1, column=2, padx=5, pady=5)
+        self.destination_city_entry = ttk.Entry(input_frame)
+        self.destination_city_entry.grid(row=1, column=3, padx=5, pady=5)
 
-        self.enter_button = Button(root, text="Enter", command=self.calculate_time)
-        self.enter_button.grid(row=4, column=1)
+        # Arrival time
+        ttk.Label(input_frame, text="Arrival Time (HH:MM):").grid(row=2, column=0, padx=5, pady=5)
+        self.arrival_entry = ttk.Entry(input_frame)
+        self.arrival_entry.grid(row=2, column=1, padx=5, pady=5)
+
+        # Enter button
+        self.enter_button = ttk.Button(root, text="Enter", command=self.calculate_time)
+        self.enter_button.grid(row=2, column=0, columnspan=4, pady=15)
 
         self.alarm_label = Label(root, text="", fg="red")
         self.alarm_label.grid(row=5, columnspan=2)
 
-        # Frame for displaying active alarms
-        Label(root, text="Active Alarms:").grid(row=6, column=0, sticky="w")
-        self.alarm_frame = Frame(root)
-        self.alarm_frame.grid(row=7, column=0, columnspan=4, sticky="ew")
-
+        # Active alarms frame
+        alarm_frame_label = ttk.Label(root, text="Active Alarms:", font=TITLE_FONT)
+        alarm_frame_label.grid(row=3, column=0, columnspan=4, pady=10)
+        self.alarm_frame = Frame(root, bg=BACKGROUND_COLOR)
+        self.alarm_frame.grid(row=4, column=0, columnspan=4, padx=10, pady=10)
+        
         self.task_button = tk.Button(root, text="Add Task", command=self.open_task_window)
         self.task_button.grid(row=8, column=0, pady=10)
 
         self.active_alarms = {}  # Dictionary to store alarms
 
     def update_clock(self):
-        # Update the clock label with the current time
         current_time = datetime.now().strftime("%H:%M:%S")
         self.clock_label.config(text=f"Current Time: {current_time}")
         self.root.after(1000, self.update_clock)
@@ -307,6 +326,10 @@ class AlarmClockApp:
     def update_alarm_list(self):
         for widget in self.alarm_frame.winfo_children():
             widget.destroy()
+
+        for alarm_id, alarm_data in self.active_alarms.items():
+            alarm_label = ttk.Label(self.alarm_frame, text=alarm_data)
+            alarm_label.pack(fill="x", padx=5, pady=5)
 
         for alarm_id, alarm_data in self.active_alarms.items():
             leave_time = alarm_data["leave_time"]
@@ -452,42 +475,32 @@ class WelcomePage:
     def __init__(self, root):
         self.root = root
         self.root.title("Welcome to Smart Alarm Clock")
+        self.root.configure(bg=BACKGROUND_COLOR)
 
         # Welcome message
-        self.message_label = Label(
-            root,
-            text="Welcome to the Smart Alarm Clock!",
-            font=("Helvetica", 16),
-            fg="blue"
-        )
+        self.message_label = ttk.Label(root, text="Welcome to the Smart Alarm Clock!", font=TITLE_FONT)
         self.message_label.pack(pady=20)
 
         # Real-time clock label
-        self.clock_label = Label(root, font=("Helvetica", 14))
+        self.clock_label = ttk.Label(root, font=LABEL_FONT)
         self.clock_label.pack(pady=10)
 
         # Open App button
-        self.open_app_button = Button(
-            root,
-            text="Open App",
-            font=("Helvetica", 12),
-            command=self.open_alarm_clock_app
-        )
+        self.open_app_button = ttk.Button(root, text="Open App", command=self.open_alarm_clock_app)
         self.open_app_button.pack(pady=20)
 
-        # Start the clock update
         self.update_clock()
 
     def update_clock(self):
-        # Update the clock label with the current time
         current_time = datetime.now().strftime("%H:%M:%S")
         self.clock_label.config(text=f"Current Time: {current_time}")
         self.root.after(1000, self.update_clock)
 
     def open_alarm_clock_app(self):
-        # Destroy the welcome page and open the alarm clock app
         self.root.destroy()
-        self.launch_alarm_clock_app()
+        alarm_root = Tk()
+        app = AlarmClockApp(alarm_root)
+        alarm_root.mainloop()
 
     def launch_alarm_clock_app(self):
         # Create a new root for the Alarm Clock App
