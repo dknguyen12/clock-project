@@ -437,7 +437,7 @@ class AlarmClockApp:
         tk.Button(task_window, text="Submit", command=submit_task).grid(row=3, column=0, columnspan=2, pady=10)
 
     def update_alarm_list(self):
-        """Update the alarm list with tasks."""
+        """Update the alarm list with tasks and delete options."""
         for widget in self.alarm_frame.winfo_children():
             widget.destroy()
 
@@ -456,20 +456,38 @@ class AlarmClockApp:
 
             # Display tasks
             if "tasks" in alarm_data:
-                for task in alarm_data["tasks"]:
+                for task_index, task in enumerate(alarm_data["tasks"]):
+                    task_frame = tk.Frame(self.alarm_frame, bg=BACKGROUND_COLOR)
+                    task_frame.pack(fill="x", padx=20, pady=1)
+
                     task_label = tk.Label(
-                        self.alarm_frame,
+                        task_frame,
                         text=f"  - Task: {task['label']} ({task['duration']} min)",
                         anchor="w",
                     )
-                    task_label.pack(fill="x", padx=20, pady=1)
+                    task_label.pack(side="left", padx=5)
+
+                    delete_task_button = tk.Button(
+                        task_frame,
+                        text="Delete Task",
+                        command=lambda alarm_id=alarm_id, task_index=task_index: self.delete_task(alarm_id, task_index),
+                    )
+                    delete_task_button.pack(side="right", padx=5)
 
             delete_button = tk.Button(
                 self.alarm_frame,
-                text="Delete",
+                text="Delete Alarm",
                 command=lambda alarm_id=alarm_id: self.delete_alarm(alarm_id),
             )
             delete_button.pack(fill="x", padx=5, pady=2)
+
+    def delete_task(self, alarm_id, task_index):
+        """Delete a task from an alarm and update the alarm list."""
+        if alarm_id in self.active_alarms and "tasks" in self.active_alarms[alarm_id]:
+            del self.active_alarms[alarm_id]["tasks"][task_index]
+            self.adjust_alarm_times()  # Recalculate leave times after task removal
+            self.update_alarm_list()
+
 
 class WelcomePage:
     def __init__(self, root):
