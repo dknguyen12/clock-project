@@ -6,10 +6,11 @@ import threading
 import time
 from playsound import playsound
 import random
+import pygame
 
 DISTANCEMATRIX_API_KEY = 'XBJdEDmtBIwogdfsYrJb0baiOzF6qSKA0m4v98TJDaZyc1Jo6If2gL7yKYTDWMYJ'
 WEATHER_API_KEY = '4dcfdb40bf998f293937f62769af9926'
-ALARM_SOUND_PATH = '/Users/dk/Desktop/clock_project/audio/audio.wav'
+ALARM_SOUND_PATH = '/Users/dk/Desktop/clock proejct/audio/audio.wav'
 
 # Utility Functions
 def get_travel_time(start, destination):
@@ -24,6 +25,10 @@ def get_travel_time(start, destination):
 
 
 def calculate_leave_time(arrival_time, travel_time):
+    # If travel_time is already a timedelta, subtract directly
+    if isinstance(travel_time, timedelta):
+        return arrival_time - travel_time
+    # Otherwise, assume travel_time is in seconds and convert it
     return arrival_time - timedelta(seconds=travel_time)
 
 
@@ -228,6 +233,11 @@ class AlarmClockApp:
             messagebox.showerror("Input Error", "Please enter arrival time in HH:MM format.")
 
     def add_alarm(self, leave_time, arrival_time, start, destination):
+        # Fetch travel time to store in alarm data
+        travel_time = get_travel_time(start, destination)
+        if travel_time is None:
+            return  # Exit if travel time could not be calculated
+        
         # Generate a unique ID for the alarm using leave_time and a random value
         alarm_id = f"{leave_time}_{random.randint(1000, 9999)}"
 
@@ -246,6 +256,7 @@ class AlarmClockApp:
             "arrival_time": arrival_time,
             "start": start,
             "destination": destination,
+            "travel_time": timedelta(seconds=travel_time),  # Store travel time here
             "thread": alarm_thread,
             "stop_event": stop_event,
         }
@@ -298,6 +309,39 @@ class AlarmClockApp:
             del self.active_alarms[alarm_id]
             self.update_alarm_list()
 
+    def adjust_alarm_times(self):
+        """Adjust alarms based on tasks and restart threads."""
+        for alarm_id, alarm_data in self.active_alarms.items():
+            total_task_time = sum(task["duration"] for task in alarm_data.get("tasks", []))
+            adjusted_leave_time = calculate_leave_time(
+                alarm_data["arrival_time"],
+                alarm_data["travel_time"] + timedelta(minutes=total_task_time),
+            )
+            
+            # Update leave time
+            alarm_data["leave_time"] = adjusted_leave_time
+
+            # Stop the current thread
+            if "stop_event" in alarm_data:
+                alarm_data["stop_event"].set()
+
+            # Create a new stop_event
+            stop_event = threading.Event()
+
+            # Restart the thread with the updated leave time
+            alarm_thread = threading.Thread(
+                target=self.start_alarm_thread,
+                args=(adjusted_leave_time, alarm_id, stop_event),
+                daemon=True,
+            )
+            alarm_thread.start()
+
+            # Update the dictionary with the new thread and stop_event
+            alarm_data["thread"] = alarm_thread
+            alarm_data["stop_event"] = stop_event
+
+        self.update_alarm_list()
+
     def open_task_window(self):
         """Opens a new window to add tasks."""
         task_window = tk.Toplevel(self.root)
@@ -338,6 +382,7 @@ class AlarmClockApp:
                 self.active_alarms[selected_alarm]["tasks"] = []
 
             self.active_alarms[selected_alarm]["tasks"].append({"label": label, "duration": duration})
+            self.adjust_alarm_times()
             self.update_alarm_list()
             task_window.destroy()
 
@@ -377,15 +422,6 @@ class AlarmClockApp:
                 command=lambda alarm_id=alarm_id: self.delete_alarm(alarm_id),
             )
             delete_button.pack(fill="x", padx=5, pady=2)
-
-    def adjust_alarm_times(self):
-        """Adjust alarms based on tasks."""
-        for alarm_id, alarm_data in self.active_alarms.items():
-            if "tasks" in alarm_data:
-                total_task_time = sum(task["duration"] for task in alarm_data["tasks"])
-                alarm_data["leave_time"] -= timedelta(minutes=total_task_time)
-
-        self.update_alarm_list()
 
 
 # Main Application
